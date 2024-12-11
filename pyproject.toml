@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "openalex-types"
+version = "0.1.0-dev1"
+description = "OpenAlex Schema implementation in Pydantic"
+authors = ["Camilo Velez <camilo.velezramirez@nih.gov>"]
+readme = "README.md"
+packages = [{include = "openalex_types", from = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10, <3.13"
+pydantic = "^2.9.2"
+requests = "^2.32.3"
+python-dotenv = "^1.0.1"
+orjson = "^3.10.10"
+pandas = "^2.2.3"
+psycopg-pool = "^3.2.3"
+boto3 = "^1.35.58"
+
+[tool.poetry.group.dev.dependencies]
+pydantic = "^2.9.2"
+pytest = "^8.3.3"
+hypothesis = "^6.115.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
