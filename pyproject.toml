@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openalex-types"
-version = "0.1.0-dev1"
+version = "0.1.0-dev2"
 description = "OpenAlex Schema implementation in Pydantic"
 authors = ["Camilo Velez <camilo.velezramirez@nih.gov>"]
 readme = "README.md"
