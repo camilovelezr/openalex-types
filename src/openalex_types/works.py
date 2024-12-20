@@ -4,11 +4,6 @@
 import logging
 from typing import Literal, Optional
 
-from openalex_types.authors import DehydratedAuthor
-from openalex_types.common import Date8601, OpenAlexObject, SQLTable
-from openalex_types.institutions import DehydratedInstitution
-from openalex_types.sources import Source
-from openalex_types.utils import check
 from psycopg import Connection
 from pydantic import (
     AliasChoices,
@@ -18,6 +13,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from openalex_types.authors import DehydratedAuthor
+from openalex_types.common import Date8601, OpenAlexObject, SQLTable
+from openalex_types.institutions import DehydratedInstitution
+from openalex_types.sources import Source
+from openalex_types.utils import check
 
 logger = logging.getLogger("openalex-types.works")
 
@@ -390,13 +391,22 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
     def _work_id_ref_related(self):
         """Appropriately format reference and related works as dict."""
         if check("related_works", self):
-            for n, related_work in enumerate(self["related_works"]):
-                self["related_works"][n] = _construct_dict_from_id(
-                    self["id"], related_work)
+            if isinstance(self["related_works"], list):
+                if isinstance(self["related_works"][0], str):
+                    for n, related_work in enumerate(self["related_works"]):
+                        self["related_works"][n] = _construct_dict_from_id(
+                            self["id"], related_work)
+                elif not isinstance(self["related_works"][0], dict):
+                    raise ValueError("related_works must be a list or dict.")
         if check("referenced_works", self):
-            for n, referenced_work in enumerate(self["referenced_works"]):
-                self["referenced_works"][n] = _construct_dict_from_id(
-                    self["id"], referenced_work)
+            if isinstance(self["referenced_works"], list):
+                if isinstance(self["referenced_works"][0], str):
+                    for n, referenced_work in enumerate(self["referenced_works"]):
+                        self["referenced_works"][n] = _construct_dict_from_id(
+                            self["id"], referenced_work)
+                elif not isinstance(self["referenced_works"][0], dict):
+                    raise ValueError(
+                        "referenced_works must be a list or dict.")
         return self
 
     @model_validator(mode="before")
