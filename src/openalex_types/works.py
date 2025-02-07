@@ -2,8 +2,15 @@
 # pylint: disable=too-few-public-methods, W1203, R1720, E1101, W0212, R1705
 
 import logging
+import os
 from typing import Literal, Optional
 
+from dotenv import find_dotenv, load_dotenv
+from openalex_types.authors import DehydratedAuthor
+from openalex_types.common import Date8601, OpenAlexObject, SQLTable
+from openalex_types.institutions import DehydratedInstitution
+from openalex_types.sources import Source
+from openalex_types.utils import check
 from psycopg import Connection
 from pydantic import (
     AliasChoices,
@@ -14,13 +21,36 @@ from pydantic import (
     model_validator,
 )
 
-from openalex_types.authors import DehydratedAuthor
-from openalex_types.common import Date8601, OpenAlexObject, SQLTable
-from openalex_types.institutions import DehydratedInstitution
-from openalex_types.sources import Source
-from openalex_types.utils import check
+load_dotenv(find_dotenv(), override=True)
 
 logger = logging.getLogger("openalex-types.works")
+
+EMBED_ABSTRACTS = os.getenv(
+    "EMBED_ABSTRACTS", default="False").lower() in ["true", "1"]
+AITHENA_SERVICES_URL = os.getenv(
+    "AITHENA_SERVICES_URL", "http://localhost:32123")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+
+logger.info(
+    f"""
+    Initializing OpenAlex Types with EMBED_ABSTRACTS={EMBED_ABSTRACTS},
+    AITHENA_SERVICES_URL={AITHENA_SERVICES_URL}, EMBEDDING_MODEL={EMBEDDING_MODEL}
+    """)
+
+if EMBED_ABSTRACTS:
+    import requests
+
+    def _get_embedding(text: str | dict | None) -> list[float] | None:
+        """Get abstract embedding through Aithena services."""
+        if text is None:
+            return None
+        url = f"{AITHENA_SERVICES_URL}/embed/{EMBEDDING_MODEL}/generate"
+        if isinstance(text, dict):
+            text = _construct_abstract_from_index(text)
+        response = requests.post(url, json=text)
+        if response.status_code != 200:
+            raise ValueError(f"Failed to get embedding: {response.text}")
+        return response.json()
 
 
 def _construct_abstract_from_index(index: dict) -> str:
@@ -133,9 +163,11 @@ class WorkBiblio(BaseModel, SQLTable):
 
 class WorkTopic(BaseModel, SQLTable):
     """Work Topic."""
-    work_id: Optional[str] = Field(
-        None, validation_alias=AliasChoices("id", "work_id"))
-    topic_id: Optional[str] = None
+    # work_id: Optional[str] = Field(
+    # None, validation_alias=AliasChoices("id", "work_id"))
+    work_id: Optional[str] = None
+    topic_id: Optional[str] = Field(None,
+                                    validation_alias=AliasChoices("id", "topic_id"))
     score: Optional[float] = None
     subfield: Optional[dict] = None
     _sql_table_name = "openalex.works_topics"
@@ -145,7 +177,8 @@ class WorkTopic(BaseModel, SQLTable):
 class WorkConcept(BaseModel, SQLTable):
     """Work Concept."""
     work_id: Optional[str] = None
-    concept_id: Optional[str] = None
+    concept_id: Optional[str] = Field(None,
+                                      validation_alias=AliasChoices("id", "concept_id"))
     score: Optional[float] = None
     _sql_table_name = "openalex.works_concepts"
     _sql_order = ["work_id", "concept_id", "score"]
@@ -327,10 +360,15 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
                   "cited_by_api_url", "abstract_inverted_index",
                   "language"
                   ]
-    _sql_subtables = ["primary_location", "locations", "best_oa_location",
-                      "authorships", "biblio", "topics", "concepts", "ids",
-                      "mesh", "open_access", "referenced_works", "related_works"]
-    #   "abstract_embedding_nomic_embed_text"]
+    if EMBED_ABSTRACTS:
+        _sql_subtables = ["primary_location", "locations", "best_oa_location",
+                          "authorships", "biblio", "topics", "concepts", "ids",
+                          "mesh", "open_access", "referenced_works", "related_works",
+                          "abstract_embedding_nomic_embed_text"]
+    else:
+        _sql_subtables = ["primary_location", "locations", "best_oa_location",
+                          "authorships", "biblio", "topics", "concepts", "ids",
+                          "mesh", "open_access", "referenced_works", "related_works"]
 
     @computed_field  # type: ignore[misc]
     @property
@@ -392,21 +430,24 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
         """Appropriately format reference and related works as dict."""
         if check("related_works", self):
             if isinstance(self["related_works"], list):
-                if isinstance(self["related_works"][0], str):
-                    for n, related_work in enumerate(self["related_works"]):
-                        self["related_works"][n] = _construct_dict_from_id(
-                            self["id"], related_work)
-                elif not isinstance(self["related_works"][0], dict):
-                    raise ValueError("related_works must be a list or dict.")
+                if len(self["related_works"]) > 0:
+                    if isinstance(self["related_works"][0], str):
+                        for n, related_work in enumerate(self["related_works"]):
+                            self["related_works"][n] = _construct_dict_from_id(
+                                self["id"], related_work)
+                    elif not isinstance(self["related_works"][0], dict):
+                        raise ValueError(
+                            "related_works must be a list or dict.")
         if check("referenced_works", self):
             if isinstance(self["referenced_works"], list):
-                if isinstance(self["referenced_works"][0], str):
-                    for n, referenced_work in enumerate(self["referenced_works"]):
-                        self["referenced_works"][n] = _construct_dict_from_id(
-                            self["id"], referenced_work)
-                elif not isinstance(self["referenced_works"][0], dict):
-                    raise ValueError(
-                        "referenced_works must be a list or dict.")
+                if len(self["referenced_works"]) > 0:
+                    if isinstance(self["referenced_works"][0], str):
+                        for n, referenced_work in enumerate(self["referenced_works"]):
+                            self["referenced_works"][n] = _construct_dict_from_id(
+                                self["id"], referenced_work)
+                    elif not isinstance(self["referenced_works"][0], dict):
+                        raise ValueError(
+                            "referenced_works must be a list or dict.")
         return self
 
     @model_validator(mode="before")
@@ -430,6 +471,15 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
                     authorships.append(authorship_)
             self["authorships"] = authorships
         return self
+
+    if EMBED_ABSTRACTS:
+        @model_validator(mode="before")
+        def _embedding(self):
+            """Add embedding."""
+            embedding_ = _get_embedding(self["abstract_inverted_index"])
+            self["abstract_embedding_nomic_embed_text"] = {
+                "work_id": self["id"], "embedding": embedding_}
+            return self
 
     @field_validator("best_oa_location")
     @classmethod
