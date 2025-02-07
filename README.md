@@ -1,4 +1,4 @@
-# OpenAlex-Types (v0.1.0-dev2)
+# OpenAlex-Types (v0.1.1-dev0)
 
 ## Overview
 
