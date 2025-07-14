@@ -9,7 +9,7 @@ from openalex_types.sources import Source
 from openalex_types.topics import Topic
 from openalex_types.works import Work
 
-__version__ = "0.1.1-dev0"
+__version__ = "0.2.0"
 
 __all__ = [
     "Author",

@@ -1,27 +1,50 @@
-[tool.poetry]
+[project]
 name = "openalex-types"
-version = "0.1.1-dev0"
+version = "0.2.0"
 description = "OpenAlex Schema implementation in Pydantic"
-authors = ["Camilo Velez <camilo.velezramirez@nih.gov>"]
+authors = [{ name = "Camilo Velez", email = "camilo.velezramirez@nih.gov" }]
+requires-python = ">=3.10, <3.13"
 readme = "README.md"
-packages = [{include = "openalex_types", from = "src"}]
+dependencies = [
+    "pydantic>=2.9.2,<3",
+    "requests>=2.32.3,<3",
+    "python-dotenv>=1.0.1,<2",
+    "orjson>=3.10.10,<4",
+    "pandas>=2.2.3,<3",
+    "psycopg-pool>=3.2.3,<4",
+    "boto3>=1.35.58,<2",
+    "psycopg>=3.2.5,<4",
+    "isal>=1.7.2",
+    "pysimdjson>=7.0.2",
+    "polars>=1.31.0",
+    "asyncpg>=0.30.0",
+    "aiofiles>=24.1.0",
+    "psutil>=7.0.0",
+    "ray[default]>=2.10.0",
+    "msgspec>=0.19.0",
+    "pyarrow>=20.0.0",
+    "lz4>=4.4.4",
+    "protobuf>=5.29.5",
+    "pgvector>=0.4.1",
+    "numpy>=2.2.6",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.10, <3.13"
-pydantic = "^2.9.2"
-requests = "^2.32.3"
-python-dotenv = "^1.0.1"
-orjson = "^3.10.10"
-pandas = "^2.2.3"
-psycopg-pool = "^3.2.3"
-boto3 = "^1.35.58"
-psycopg = "^3.2.5"
+[dependency-groups]
+dev = [
+    "pydantic>=2.9.2,<3",
+    "pytest>=8.3.3,<9",
+    "hypothesis>=6.115.2,<7",
+]
 
-[tool.poetry.group.dev.dependencies]
-pydantic = "^2.9.2"
-pytest = "^8.3.3"
-hypothesis = "^6.115.2"
+[tool.hatch.build.targets.sdist]
+include = ["src/openalex_types"]
+
+[tool.hatch.build.targets.wheel]
+include = ["src/openalex_types"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/openalex_types" = "openalex_types"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
