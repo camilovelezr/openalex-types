@@ -16,7 +16,6 @@ from pydantic import (
     AliasChoices,
     BaseModel,
     Field,
-    computed_field,
     field_validator,
     model_validator,
 )
@@ -25,47 +24,13 @@ load_dotenv(find_dotenv(), override=True)
 
 logger = logging.getLogger("openalex-types.works")
 
-EMBED_ABSTRACTS = os.getenv(
-    "EMBED_ABSTRACTS", default="False").lower() in ["true", "1"]
 AITHENA_SERVICES_URL = os.getenv(
     "AITHENA_SERVICES_URL", "http://localhost:32123")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 
 logger.info(
     f"""
-    Initializing OpenAlex Types with EMBED_ABSTRACTS={EMBED_ABSTRACTS},
-    AITHENA_SERVICES_URL={AITHENA_SERVICES_URL}, EMBEDDING_MODEL={EMBEDDING_MODEL}
+    Initializing OpenAlex Types with AITHENA_SERVICES_URL={AITHENA_SERVICES_URL}
     """)
-
-if EMBED_ABSTRACTS:
-    import requests
-
-    def _get_embedding(text: str | dict | None) -> list[float] | None:
-        """Get abstract embedding through Aithena services."""
-        if text is None:
-            return None
-        url = f"{AITHENA_SERVICES_URL}/embed/{EMBEDDING_MODEL}/generate"
-        if isinstance(text, dict):
-            text = _construct_abstract_from_index(text)
-        response = requests.post(url, json=text)
-        if response.status_code != 200:
-            raise ValueError(f"Failed to get embedding: {response.text}")
-        return response.json()
-
-
-def _construct_abstract_from_index(index: dict) -> str:
-    """Construct abstract from inverted index."""
-    if index is None:
-        return ""
-    list_ = [int(y) for x in index.values() for y in x]
-    if len(list_) == 0:
-        return ""
-    max_ = max(list_)
-    abs_ = [""] * (max_ + 1)
-    for word, positions in index.items():
-        for position in positions:
-            abs_[position] = word
-    return " ".join(abs_)
 
 
 def _construct_dict_from_id(work_id: str, other_id: str) -> dict:
@@ -315,7 +280,7 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
     is_retracted: Optional[bool] = None
     is_paratext: Optional[bool] = None
     cited_by_api_url: Optional[str] = None
-    abstract_inverted_index: Optional[dict] = None
+    abstract: Optional[str] = None
     language: Optional[str] = None
     ids: Optional[WorkIDs] = None
     locations: Optional[list[WorkLocation]] = None
@@ -352,31 +317,17 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
     sustainable_development_goals: Optional[list[WorkSDG]] = None
     type_crossref: Optional[str] = None
     updated_date: Optional[Date8601] = None
-    abstract_embedding_nomic_embed_text: Optional[NomicEmbedText768] = None
     _sql_table_name = "openalex.works"
     _sql_order = ["id", "doi", "title", "display_name", "publication_year",
                   "publication_date", "type",
                   "cited_by_count", "is_retracted", "is_paratext",
-                  "cited_by_api_url", "abstract_inverted_index",
+                  "cited_by_api_url", "abstract",
                   "language"
                   ]
-    if EMBED_ABSTRACTS:
-        _sql_subtables = ["primary_location", "locations", "best_oa_location",
-                          "authorships", "biblio", "topics", "concepts", "ids",
-                          "mesh", "open_access", "referenced_works", "related_works",
-                          "abstract_embedding_nomic_embed_text"]
-    else:
-        _sql_subtables = ["primary_location", "locations", "best_oa_location",
-                          "authorships", "biblio", "topics", "concepts", "ids",
-                          "mesh", "open_access", "referenced_works", "related_works"]
+    _sql_subtables = ["primary_location", "locations", "best_oa_location",
+                        "authorships", "biblio", "topics", "concepts", "ids",
+                        "mesh", "open_access", "referenced_works", "related_works"]
 
-    @computed_field  # type: ignore[misc]
-    @property
-    def abstract(self) -> str | None:
-        """Abstract as plain-text."""
-        if self.abstract_inverted_index is None:
-            return None
-        return _construct_abstract_from_index(self.abstract_inverted_index)
 
     @model_validator(mode="before")
     def _replicate_id_1(self):
@@ -472,15 +423,6 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
             self["authorships"] = authorships
         return self
 
-    if EMBED_ABSTRACTS:
-        @model_validator(mode="before")
-        def _embedding(self):
-            """Add embedding."""
-            embedding_ = _get_embedding(self["abstract_inverted_index"])
-            self["abstract_embedding_nomic_embed_text"] = {
-                "work_id": self["id"], "embedding": embedding_}
-            return self
-
     @field_validator("best_oa_location")
     @classmethod
     def _validate_best_oa_location(cls, value):
@@ -491,15 +433,6 @@ class Work(OpenAlexObject, SQLTable, validate_assignment=True):
             raise ValueError("best_oa_location must be OA.")
         return value
 
-    @field_validator("abstract_inverted_index")
-    @classmethod
-    def _validate_abstract_inverted_index(cls, value):
-        """Validate abstract_inverted_index."""
-        if value is None:
-            return value
-        if len(value) == 0:
-            return None
-        return value
 
     @staticmethod
     def from_sql(t: tuple, conn: Optional[Connection] = None,

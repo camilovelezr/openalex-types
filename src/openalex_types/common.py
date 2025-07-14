@@ -83,6 +83,31 @@ class SQLTable:
         """SQL string for INSERT."""
         return "(" + ", ".join([self._get_arg(k) for k in self._sql_order]) + ")"
 
+    def to_sql_values(self) -> tuple:
+        """Return a tuple of values for parameterized SQL queries."""
+        values = []
+        for key in self._sql_order:
+            value = getattr(self, key, None)
+            # Convert dictionaries to JSON strings for asyncpg
+            if isinstance(value, dict):
+                value = orjson.dumps(value).decode()
+            # Convert ISO datetime strings back to datetime objects for PostgreSQL
+            elif isinstance(value, str) and value and len(value) >= 10:
+                # Check if it looks like an ISO datetime string
+                if value[4] == '-' and value[7] == '-':
+                    try:
+                        # Try to parse as datetime
+                        if 'T' in value or ' ' in value:
+                            value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                        # If it's just a date, parse as date
+                        else:
+                            value = datetime.fromisoformat(value + 'T00:00:00')
+                    except (ValueError, AttributeError):
+                        # If parsing fails, keep as string
+                        pass
+            values.append(value)
+        return tuple(values)
+
 
 def sql_tables_to_df(tables: list[SQLTable]) -> pd.DataFrame:
     """Convert SQL tables to DataFrame."""
